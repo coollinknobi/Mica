@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Mica 飲食熱量計算機</title>
+    
+    <!-- iOS PWA Settings -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Mica飲食">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Markdown Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <style>
+        /* iOS Safe Area Support */
+        body { 
+            background-color: #f8fafc; 
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            -webkit-tap-highlight-color: transparent;
+            user-select: none; /* Prevent text selection like an app */
+        }
+        /* Hide scrollbar */
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        
+        // --- API Key ---
+        // 如果您希望手機上也能用 AI，請將 API Key 填入下方引號中
+        // 若空白，介面上會出現輸入框讓您在手機上貼上
+        const embeddedApiKey = ""; 
+
+        // --- Icons ---
+        const Icon = ({ path, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {path}
+            </svg>
+        );
+        const Utensils = (props) => <Icon {...props} path={<><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></>} />;
+        const Settings = (props) => <Icon {...props} path={<><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></>} />;
+        const Sun = (props) => <Icon {...props} path={<><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></>} />;
+        const Moon = (props) => <Icon {...props} path={<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>} />;
+        const ChevronDown = (props) => <Icon {...props} path={<path d="m6 9 6 6 6-6"/>} />;
+        const Bone = (props) => <Icon {...props} path={<path d="M17 10c.7-.7 1.69 0 2.5 0a2.5 2.5 0 1 0 0-5 .5.5 0 0 1-.5-.5 2.5 2.5 0 1 0-5 0c0 .81.7 1.8 0 2.5l-7 7c-.7.7-1.69 0-2.5 0a2.5 2.5 0 0 0 0 5c.28 0 .5.22.5.5a2.5 2.5 0 1 0 5 0c0-.81-.7-1.8 0-2.5Z"/>} />;
+        const Plus = (props) => <Icon {...props} path={<><path d="M5 12h14"/><path d="M12 5v14"/></>} />;
+        const X = (props) => <Icon {...props} path={<><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>} />;
+        const Sparkles = (props) => <Icon {...props} path={<><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 3v4"/><path d="M3 5h4"/><path d="M3 9h4"/></>} />;
+        const Bot = (props) => <Icon {...props} path={<><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></>} />;
+        const Key = (props) => <Icon {...props} path={<><path d="m21 2-2 2m-7.6 7.6a6.5 6.5 0 1 1 5.3 5.3L3 21l-3-3 2.2-2.2"/></>} />;
+
+        // Farmer Pete's Treats
+        const FARMER_PETES_TREATS = [
+            { id: 'croc_feet', name: 'Crocodile Feet', category: 'Crocodile', defaultCal: 4.2, avgWeight: 25, icon: '🐊' },
+            { id: 'croc_jerky', name: 'Crocodile Jerky', category: 'Crocodile', defaultCal: 4.0, avgWeight: 10, icon: '🐊' },
+            { id: 'croc_tail', name: 'Crocodile Tail Pieces', category: 'Crocodile', defaultCal: 4.1, avgWeight: 35, icon: '🐊' },
+            { id: 'croc_ridges', name: 'Crocodile Ridges', category: 'Crocodile', defaultCal: 3.5, avgWeight: 15, icon: '🐊' },
+            { id: 'roo_tendons', name: 'Roo Tendons', category: 'Kangaroo', defaultCal: 3.3, avgWeight: 15, icon: '🦘' },
+            { id: 'roo_jerky', name: 'Roo Jerky', category: 'Kangaroo', defaultCal: 3.4, avgWeight: 10, icon: '🦘' },
+            { id: 'roo_tail', name: 'Roo Tail (Piece)', category: 'Kangaroo', defaultCal: 3.5, avgWeight: 50, icon: '🦘' },
+            { id: 'roo_ribs', name: 'Roo Ribs', category: 'Kangaroo', defaultCal: 3.2, avgWeight: 30, icon: '🦘' },
+            { id: 'roo_liver', name: 'Roo Liver', category: 'Kangaroo', defaultCal: 3.6, avgWeight: 8, icon: '🦘' },
+            { id: 'beef_pizzle', name: 'Beef Pizzle', category: 'Beef', defaultCal: 3.9, avgWeight: 30, icon: '🦴' },
+            { id: 'beef_liver', name: 'Beef Liver', category: 'Beef', defaultCal: 3.8, avgWeight: 8, icon: '🥩' },
+            { id: 'beef_jerky', name: 'Beef Jerky', category: 'Beef', defaultCal: 4.0, avgWeight: 12, icon: '🥩' },
+            { id: 'beef_paddywack', name: 'Beef Paddywack', category: 'Beef', defaultCal: 4.1, avgWeight: 20, icon: '🥩' },
+            { id: 'beef_ear', name: 'Cow Ear (Whole)', category: 'Beef', defaultCal: 4.2, avgWeight: 50, icon: '👂' },
+            { id: 'beef_tripe', name: 'Green Beef Tripe', category: 'Beef', defaultCal: 4.2, avgWeight: 10, icon: '🥩' },
+            { id: 'chicken_neck', name: 'Chicken Necks', category: 'Poultry', defaultCal: 3.5, avgWeight: 20, icon: '🐔' },
+            { id: 'chicken_feet', name: 'Chicken Feet', category: 'Poultry', defaultCal: 3.8, avgWeight: 15, icon: '🐔' },
+            { id: 'chicken_jerky', name: 'Chicken Breast Jerky', category: 'Poultry', defaultCal: 3.7, avgWeight: 10, icon: '🐔' },
+            { id: 'duck_wing', name: 'Duck Wing', category: 'Poultry', defaultCal: 3.9, avgWeight: 35, icon: '🦆' },
+            { id: 'duck_neck', name: 'Duck Neck', category: 'Poultry', defaultCal: 3.9, avgWeight: 25, icon: '🦆' },
+            { id: 'salmon_bites', name: 'Salmon Bites', category: 'Seafood', defaultCal: 3.5, avgWeight: 5, icon: '🐟' },
+            { id: 'shark_cartilage', name: 'Shark Cartilage', category: 'Seafood', defaultCal: 2.0, avgWeight: 10, icon: '🦈' },
+            { id: 'sardines', name: 'Dried Sardines', category: 'Seafood', defaultCal: 3.5, avgWeight: 5, icon: '🐟' },
+            { id: 'mackerel', name: 'Mackerel Tail', category: 'Seafood', defaultCal: 3.6, avgWeight: 15, icon: '🐟' },
+            { id: 'mussel', name: 'Green Lipped Mussel', category: 'Seafood', defaultCal: 3.2, avgWeight: 3, icon: '🐚' },
+            { id: 'pig_ear', name: 'Pig Ear', category: 'Pork', defaultCal: 4.5, avgWeight: 50, icon: '🐷' },
+            { id: 'pig_snout', name: 'Pig Snout', category: 'Pork', defaultCal: 4.2, avgWeight: 30, icon: '🐷' },
+            { id: 'lamb_puff', name: 'Lamb Puff (Lung)', category: 'Lamb', defaultCal: 3.5, avgWeight: 5, icon: '🐑' },
+            { id: 'goat_horn', name: 'Goat Horn (Small)', category: 'Game', defaultCal: 2.5, avgWeight: 60, icon: '🐐' },
+            { id: 'emu_jerky', name: 'Emu Jerky', category: 'Game', defaultCal: 3.8, avgWeight: 10, icon: '🦤' },
+        ];
+
+        const MicaMealCalculator = () => {
+            const [bfLyka, setBfLyka] = useState(130);
+            const [bfEureka, setBfEureka] = useState(20);
+            const [dinLyka, setDinLyka] = useState(130);
+            const [dinEureka, setDinEureka] = useState(20);
+
+            // 如果有 localStorage 紀錄，就讀取，否則使用預設值
+            const [treatsLog, setTreatsLog] = useState(() => {
+                const saved = localStorage.getItem('treatsLog');
+                return saved ? JSON.parse(saved) : [{ instanceId: 1, productId: 'beef_pizzle', mode: 'count', count: 1, weight: 30 }];
+            });
+
+            const [selectedProductToAdd, setSelectedProductToAdd] = useState('beef_pizzle');
+            const [lykaCalPerG, setLykaCalPerG] = useState(1.4); 
+            const [eurekaCalPerG, setEurekaCalPerG] = useState(3.8);
+            const [dailyLimit, setDailyLimit] = useState(700); 
+            const [userApiKey, setUserApiKey] = useState(() => localStorage.getItem('geminiApiKey') || embeddedApiKey || '');
+
+            const [productCals, setProductCals] = useState(
+                FARMER_PETES_TREATS.reduce((acc, prod) => ({ ...acc, [prod.id]: prod.defaultCal }), {})
+            );
+
+            const [showSettings, setShowSettings] = useState(false);
+            const [aiAdvice, setAiAdvice] = useState(null);
+            const [loadingAdvice, setLoadingAdvice] = useState(false);
+
+            // 儲存狀態到 LocalStorage 以防重新整理消失
+            useEffect(() => {
+                localStorage.setItem('treatsLog', JSON.stringify(treatsLog));
+                localStorage.setItem('geminiApiKey', userApiKey);
+            }, [treatsLog, userApiKey]);
+
+            const groupedTreats = useMemo(() => {
+                const groups = {};
+                FARMER_PETES_TREATS.forEach(treat => {
+                    if (!groups[treat.category]) groups[treat.category] = [];
+                    groups[treat.category].push(treat);
+                });
+                return groups;
+            }, []);
+
+            const handleAddTreat = () => {
+                const product = FARMER_PETES_TREATS.find(p => p.id === selectedProductToAdd);
+                if (!product) return;
+                const newTreat = { instanceId: Date.now(), productId: selectedProductToAdd, mode: 'count', count: 1, weight: product.avgWeight };
+                setTreatsLog([...treatsLog, newTreat]);
+            };
+
+            const handleRemoveTreat = (instanceId) => {
+                setTreatsLog(treatsLog.filter(t => t.instanceId !== instanceId));
+            };
+
+            const handleUpdateTreat = (instanceId, updates) => {
+                setTreatsLog(treatsLog.map(t => {
+                    if (t.instanceId !== instanceId) return t;
+                    const updatedTreat = { ...t, ...updates };
+                    const product = FARMER_PETES_TREATS.find(p => p.id === t.productId);
+                    if (updates.count !== undefined && product) updatedTreat.weight = updates.count * product.avgWeight;
+                    if (updates.mode === 'count' && t.mode === 'weight' && product) updatedTreat.weight = updatedTreat.count * product.avgWeight;
+                    return updatedTreat;
+                }));
+            };
+
+            const [results, setResults] = useState({ bfTotal: 0, dinTotal: 0, treatTotal: 0, dailyTotal: 0, isOver: false });
+
+            useEffect(() => {
+                const bf = (bfLyka * lykaCalPerG) + (bfEureka * eurekaCalPerG);
+                const din = (dinLyka * lykaCalPerG) + (dinEureka * eurekaCalPerG);
+                const treatSum = treatsLog.reduce((sum, item) => sum + (item.weight * (productCals[item.productId] || 0)), 0);
+                const total = bf + din + treatSum;
+                setResults({ bfTotal: bf, dinTotal: din, treatTotal: treatSum, dailyTotal: total, isOver: total > dailyLimit });
+            }, [bfLyka, bfEureka, dinLyka, dinEureka, treatsLog, lykaCalPerG, eurekaCalPerG, productCals, dailyLimit]);
+
+            const callGemini = async () => {
+                if (!userApiKey) {
+                    setAiAdvice("請先在「設定」中輸入您的 Google Gemini API Key 才能使用此功能喔！");
+                    setShowSettings(true);
+                    return;
+                }
+                setLoadingAdvice(true);
+                setAiAdvice(null);
+                
+                const treatsDescription = treatsLog.map(t => {
+                    const product = FARMER_PETES_TREATS.find(p => p.id === t.productId);
+                    return `${product.name} (${t.weight}g)`;
+                }).join(', ');
+
+                const prompt = `你是 Mica 的專屬狗狗營養師。請根據：早餐 Lyka ${bfLyka}g, Eureka ${bfEureka}g; 晚餐 Lyka ${dinLyka}g, Eureka ${dinEureka}g; 零食: ${treatsDescription || '無'}。總熱量: ${results.dailyTotal.toFixed(0)} kcal (目標: ${dailyLimit})。請用繁體中文給出簡短、有趣、像對主人說話的建議。`;
+
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${userApiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    });
+                    if (!response.ok) throw new Error('API request failed');
+                    const data = await response.json();
+                    setAiAdvice(data.candidates[0].content.parts[0].text);
+                } catch (error) {
+                    setAiAdvice("哎呀，AI 營養師連線失敗。請檢查 API Key。");
+                } finally {
+                    setLoadingAdvice(false);
+                }
+            };
+
+            const TreatItem = ({ item }) => {
+                const product = FARMER_PETES_TREATS.find(p => p.id === item.productId);
+                if (!product) return null;
+                const itemCals = item.weight * (productCals[item.productId] || 0);
+
+                return (
+                    <div className="bg-white border border-orange-100 rounded-lg p-3 mb-2 shadow-sm relative">
+                        <button onClick={() => handleRemoveTreat(item.instanceId)} className="absolute top-2 right-2 text-slate-300 hover:text-rose-500 p-2"><X className="w-4 h-4" /></button>
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xl bg-orange-50 p-1 rounded">{product.icon}</span>
+                            <span className="font-medium text-sm text-slate-700">{product.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs mb-2">
+                            <button onClick={() => handleUpdateTreat(item.instanceId, { mode: 'count' })} className={`px-2 py-0.5 rounded ${item.mode === 'count' ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500'}`}>數量</button>
+                            <button onClick={() => handleUpdateTreat(item.instanceId, { mode: 'weight' })} className={`px-2 py-0.5 rounded ${item.mode === 'weight' ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500'}`}>秤重</button>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                            <div className="flex-1">
+                                {item.mode === 'count' ? (
+                                    <>
+                                        <div className="flex justify-between text-xs text-slate-500 mb-1"><span>數量: {item.count}</span><span>(約 {item.weight}g)</span></div>
+                                        <input type="range" min="1" max="10" step="1" value={item.count} onChange={(e) => handleUpdateTreat(item.instanceId, { count: parseInt(e.target.value) })} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="flex justify-between text-xs text-slate-500 mb-1"><span>重量: {item.weight}g</span></div>
+                                        <input type="range" min="1" max="100" step="1" value={item.weight} onChange={(e) => handleUpdateTreat(item.instanceId, { weight: parseInt(e.target.value) })} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+                                    </>
+                                )}
+                            </div>
+                            <div className="text-right min-w-[60px]">
+                                <div className="font-bold text-orange-600 text-sm">{itemCals.toFixed(0)}</div>
+                                <div className="text-[10px] text-slate-400">kcal</div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const MealSection = ({ title, icon: Icon, lyka, setLyka, eureka, setEureka, total, colorClass, bgClass }) => (
+                <div className={`p-4 rounded-xl border ${bgClass} mb-4`}>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className={`font-bold flex items-center gap-2 ${colorClass}`}><Icon className="w-5 h-5" /> {title}</h3>
+                        <span className="text-sm font-mono font-bold bg-white px-2 py-1 rounded text-slate-600">{total.toFixed(0)} kcal</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3">
+                        <div>
+                            <div className="flex justify-between text-xs mb-1 text-slate-600"><span>Lyka</span><span>{lyka} g</span></div>
+                            <input type="range" min="0" max="300" step="5" value={lyka} onChange={(e) => setLyka(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600" />
+                        </div>
+                        <div>
+                            <div className="flex justify-between text-xs mb-1 text-slate-600"><span>Eureka</span><span>{eureka} g</span></div>
+                            <input type="range" min="0" max="100" step="1" value={eureka} onChange={(e) => setEureka(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600" />
+                        </div>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="max-w-md mx-auto min-h-screen sm:h-auto pb-10">
+                    <div className="bg-white sm:rounded-2xl shadow-xl overflow-hidden border border-slate-200 min-h-screen sm:min-h-0">
+                        {/* Header */}
+                        <div className="bg-slate-900 p-6 pt-12 text-white relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-4 opacity-10"><Utensils className="w-32 h-32" /></div>
+                            <div className="relative z-10">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <h2 className="text-2xl font-bold">Mica 每日飲食</h2>
+                                        <p className="text-slate-400 text-xs mt-1">iOS App 版本 + AI 營養師</p>
+                                    </div>
+                                    <button onClick={() => setShowSettings(!showSettings)} className="p-2 bg-white/10 rounded-full hover:bg-white/20"><Settings className="w-6 h-6" /></button>
+                                </div>
+                                <div className="mt-6 text-center">
+                                    <div className={`text-5xl font-bold ${results.isOver ? 'text-rose-400' : 'text-emerald-400'}`}>{results.dailyTotal.toFixed(0)} <span className="text-sm text-slate-400">/ {dailyLimit}</span></div>
+                                    <div className="h-2 bg-slate-700 rounded-full mt-3 overflow-hidden flex">
+                                        <div style={{ width: `${(results.bfTotal / dailyLimit) * 100}%` }} className="h-full bg-amber-400" />
+                                        <div style={{ width: `${(results.dinTotal / dailyLimit) * 100}%` }} className="h-full bg-indigo-400" />
+                                        <div style={{ width: `${(results.treatTotal / dailyLimit) * 100}%` }} className="h-full bg-orange-500" />
+                                    </div>
+                                    <div className="flex justify-center gap-4 mt-2 text-[10px] text-slate-400 uppercase tracking-wider">
+                                        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-400"></div>早餐</span>
+                                        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-400"></div>晚餐</span>
+                                        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-500"></div>零食</span>
+                                    </div>
+                                    
+                                    <button onClick={callGemini} disabled={loadingAdvice} className="mt-6 w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-3 rounded-xl text-sm font-bold shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50">
+                                        {loadingAdvice ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div> : <Sparkles className="w-4 h-4" />}
+                                        {loadingAdvice ? 'AI 思考中...' : 'AI 營養師點評'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {aiAdvice && (
+                            <div className="bg-purple-50 border-b border-purple-100 p-4">
+                                <div className="flex gap-3 items-start">
+                                    <div className="bg-purple-100 p-2 rounded-full shrink-0"><Bot className="w-5 h-5 text-purple-600" /></div>
+                                    <div className="flex-1">
+                                        <h4 className="font-bold text-purple-800 text-sm mb-1">Mica 的專屬建議：</h4>
+                                        <div className="text-sm text-purple-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: marked.parse(aiAdvice) }} />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {showSettings && (
+                            <div className="bg-slate-100 p-4 border-b border-slate-200 text-sm">
+                                <h4 className="font-bold mb-2 text-slate-600 flex items-center gap-2"><Key className="w-4 h-4" /> API 設定</h4>
+                                <div className="mb-4">
+                                    <input type="password" value={userApiKey} onChange={(e) => setUserApiKey(e.target.value)} placeholder="貼上 Google Gemini API Key" className="w-full p-3 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
+                                </div>
+                                <h4 className="font-bold mb-2 text-slate-600">基礎設定</h4>
+                                <div className="grid grid-cols-2 gap-2 mb-4">
+                                    <label className="block"><span className="text-xs text-slate-500">每日上限</span><input type="number" value={dailyLimit} onChange={e => setDailyLimit(Number(e.target.value))} className="w-full p-2 border rounded-lg" /></label>
+                                    <label className="block"><span className="text-xs text-slate-500">Lyka (kcal/g)</span><input type="number" step="0.1" value={lykaCalPerG} onChange={e => setLykaCalPerG(Number(e.target.value))} className="w-full p-2 border rounded-lg" /></label>
+                                    <label className="block"><span className="text-xs text-slate-500">Eureka (kcal/g)</span><input type="number" step="0.1" value={eurekaCalPerG} onChange={e => setEurekaCalPerG(Number(e.target.value))} className="w-full p-2 border rounded-lg" /></label>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="p-4 overflow-y-auto pb-20">
+                            <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 mb-6">
+                                <div className="flex items-center justify-between mb-3 text-orange-800">
+                                    <div className="font-bold flex gap-2 items-center"><Bone className="w-5 h-5" /> 零食區</div>
+                                    <div className="text-xs font-bold bg-orange-200 px-2 py-1 rounded text-orange-800">{results.treatTotal.toFixed(0)} kcal</div>
+                                </div>
+                                <div className="flex gap-2 mb-4">
+                                    <div className="relative flex-1">
+                                        <select value={selectedProductToAdd} onChange={(e) => setSelectedProductToAdd(e.target.value)} className="w-full p-3 pl-8 appearance-none bg-white border border-orange-200 rounded-xl text-sm outline-none">
+                                            {Object.keys(groupedTreats).map(category => (<optgroup key={category} label={category}>{groupedTreats[category].map(p => (<option key={p.id} value={p.id}>{p.icon} {p.name}</option>))}</optgroup>))}
+                                        </select>
+                                        <span className="absolute left-2 top-3 text-sm">{FARMER_PETES_TREATS.find(p => p.id === selectedProductToAdd)?.icon}</span>
+                                        <ChevronDown className="absolute right-3 top-4 w-4 h-4 text-slate-400 pointer-events-none" />
+                                    </div>
+                                    <button onClick={handleAddTreat} className="bg-orange-500 text-white p-3 rounded-xl flex items-center gap-1 text-sm font-bold"><Plus className="w-5 h-5" /></button>
+                                </div>
+                                <div className="space-y-2">
+                                    {treatsLog.length === 0 ? <div className="text-center text-xs text-orange-400 py-4 border-2 border-dashed border-orange-200 rounded-lg">今天還沒吃零食</div> : treatsLog.map(item => (<TreatItem key={item.instanceId} item={item} />))}
+                                </div>
+                            </div>
+
+                            <MealSection title="早餐" icon={Sun} lyka={bfLyka} setLyka={setBfLyka} eureka={bfEureka} setEureka={setBfEureka} total={results.bfTotal} bgClass="bg-amber-50 border-amber-100" colorClass="text-amber-700" />
+                            <MealSection title="晚餐" icon={Moon} lyka={dinLyka} setLyka={setDinLyka} eureka={dinEureka} setEureka={setDinEureka} total={results.dinTotal} bgClass="bg-indigo-50 border-indigo-100" colorClass="text-indigo-700" />
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<MicaMealCalculator />);
+    </script>
+</body>
+</html>
